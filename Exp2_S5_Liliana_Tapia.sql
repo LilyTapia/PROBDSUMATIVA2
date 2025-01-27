@@ -1,4 +1,4 @@
---****************************************************************************--
+-****************************************************************************--
 --                      SUMATIVA N° 2 : LILIANA TAPIA                         --
 --****************************************************************************--
 
@@ -43,15 +43,15 @@ CREATE SEQUENCE SQ_ERRORES
 -- ----------------------------------------------------------------------------
 DECLARE
    ----------------------------------------------------------------------------
-   -- 3.1 Declaración de un VARRAY para porcentajes de movilización extra.
-   --     Cada elemento representa un porcentaje diferente aplicado según
-   --     ciertos criterios de comuna y tope de honorarios.
+   -- Declaración de un VARRAY para porcentajes de movilización extra.
+   -- Cada elemento representa un porcentaje diferente aplicado según
+   -- ciertos criterios de comuna y tope de sueldos.
    ----------------------------------------------------------------------------
    TYPE t_movil IS VARRAY(5) OF NUMBER;
    v_movil            t_movil := t_movil(0.02, 0.04, 0.05, 0.07, 0.09);
 
    ----------------------------------------------------------------------------
-   -- 3.2 Variables para año y mes, calculados a partir de la fecha de proceso.
+   -- Variables para año y mes, calculados a partir de la fecha de proceso.
    ----------------------------------------------------------------------------
    v_ano    NUMBER := TO_NUMBER(
                         TO_CHAR(
@@ -68,7 +68,7 @@ DECLARE
                        );
 
    ----------------------------------------------------------------------------
-   -- 3.3 Cursor que obtendrá la información básica de cada profesional.
+   -- Cursor que obtendrá la información básica de cada profesional.
    ----------------------------------------------------------------------------
    CURSOR c_profesionales (p_ano NUMBER, p_mes NUMBER)
   IS
@@ -87,26 +87,49 @@ DECLARE
                p.nombre;
 
    ----------------------------------------------------------------------------
-   -- 3.4 Variables auxiliares para almacenar información intermedia del profesional.
+   -- Cursor sin parámetros que obtendrá información adicional de profesión
    ----------------------------------------------------------------------------
-   v_profe               c_profesionales%ROWTYPE; -- Para guardar la fila actual del cursor
+   CURSOR c_profesion_info IS
+     SELECT cod_profesion, nombre_profesion
+       FROM profesion;
+   ----------------------------------------------------------------------------
+   -- Variables auxiliares para almacenar información intermedia del profesional.
+   ----------------------------------------------------------------------------
+   v_profe               c_profesionales%ROWTYPE; -- Variable para almacenar una fila completa del cursor c_profesionales
+   v_profesion_info c_profesion_info%ROWTYPE;     -- Variable para almacenar una fila completa del cursor c_profesion_info 
    v_num_asesorias       NUMBER := 0;             -- Número de asesorías del profesional en el mes
-   v_total_honorarios    NUMBER := 0;             -- Suma de honorarios del profesional en el mes
-   v_monto_movil_extra   NUMBER := 0;             -- Asignación extra por movilización
-   v_asig_tipo_cont      NUMBER := 0;             -- Asignación por tipo de contrato
+   v_total_honorarios    NUMBER := 0;             -- Total de honorarios acumulados del profesional en el mes
+   v_monto_movil_extra   NUMBER := 0;             -- Monto adicional asignado por concepto de movilización
+   v_asig_tipo_cont      NUMBER := 0;             -- Monto asignado según el tipo de contrato del profesional
    v_asig_profesion      NUMBER := 0;             -- Asignación por profesión
-   v_total_asignaciones  NUMBER := 0;             -- Suma de todas las asignaciones
-   v_comuna_nombre       VARCHAR2(50);            -- Nombre de la comuna
+   v_total_asignaciones  NUMBER := 0;             -- Total de todas las asignaciones calculadas para el profesional
+   v_comuna_nombre       VARCHAR2(50);            -- Nombre de la comuna correspondiente al profesional
 
 BEGIN
    ----------------------------------------------------------------------------
-    -- 3.5 Limpiar las tablas de detalle y de resumen antes de iniciar el proceso.
+    -- Limpiar las tablas de detalle y de resumen antes de iniciar el proceso.
    ----------------------------------------------------------------------------
    EXECUTE IMMEDIATE 'TRUNCATE TABLE DETALLE_ASIGNACION_MES';
    EXECUTE IMMEDIATE 'TRUNCATE TABLE RESUMEN_MES_PROFESION';
 
    ----------------------------------------------------------------------------
-    -- 3.6 Abrir el cursor y recorrer cada profesional.
+   -- Uso del cursor sin parámetros para profesión 
+   ----------------------------------------------------------------------------
+   OPEN c_profesion_info;
+   LOOP
+      FETCH c_profesion_info INTO v_profesion_info;
+      EXIT WHEN c_profesion_info%NOTFOUND;
+      
+      DBMS_OUTPUT.PUT_LINE(
+         'Profesión: ' || v_profesion_info.nombre_profesion 
+         || ' (código:' || v_profesion_info.cod_profesion || ')'
+    
+      );
+   END LOOP;
+   CLOSE c_profesion_info;
+
+   ----------------------------------------------------------------------------
+    -- Abrir el cursor y recorrer cada profesional.
    ----------------------------------------------------------------------------
    OPEN c_profesionales(v_ano, v_mes);
    LOOP
@@ -114,7 +137,7 @@ BEGIN
       EXIT WHEN c_profesionales%NOTFOUND;
 
       ----------------------------------------------------------------------------
-      -- 3.6.1 Obtener número de asesorías y total de honorarios para el profesional
+      -- Obtener número de asesorías y total de honorarios para el profesional
       -- en el año y mes indicados.
       ----------------------------------------------------------------------------
       SELECT NVL(COUNT(*), 0),
@@ -126,14 +149,14 @@ BEGIN
          AND EXTRACT(MONTH FROM a.inicio_asesoria) = v_mes;
 
       ----------------------------------------------------------------------------
-      -- 3.6.2 Si el profesional no tiene asesorías en el periodo, se omite.
+      -- Si el profesional no tiene asesorías en el periodo, se omite.
       ----------------------------------------------------------------------------
       IF v_num_asesorias = 0 THEN
          CONTINUE;
       END IF;
 
       ----------------------------------------------------------------------------
-       -- 3.6.3 Calcular la asignación por movilización extra según la comuna
+       -- Calcular la asignación por movilización extra según la comuna
        --  y los topes de sueldos establecidos.
       ----------------------------------------------------------------------------
       BEGIN
@@ -158,7 +181,7 @@ BEGIN
 
       EXCEPTION
          ----------------------------------------------------------------------------
-        -- 3.6.4 Si la comuna del profesional no existe en la tabla comuna,
+        -- Si la comuna del profesional no existe en la tabla comuna,
          -- se asigna 0 en la movilización extra y se continúa.
          ----------------------------------------------------------------------------
          WHEN NO_DATA_FOUND THEN
@@ -166,7 +189,7 @@ BEGIN
       END;
 
       ----------------------------------------------------------------------------
-      -- 3.6.5 Calcular la asignación por tipo de contrato.
+      -- Calcular la asignación por tipo de contrato.
       -- Se basa en un porcentaje (incentivo) definido en la tabla tipo_contrato.
       ----------------------------------------------------------------------------
       BEGIN
@@ -183,7 +206,7 @@ BEGIN
       END;
 
       ----------------------------------------------------------------------------
-      -- 3.6.6 Calcular la asignación por profesión.
+      -- Calcular la asignación por profesión.
       -- Se basa en la tabla porcentaje_profesion, que indica un porcentaje
       -- diferente por cada profesión.
       ----------------------------------------------------------------------------
@@ -210,7 +233,7 @@ EXCEPTION
       );
 END;
       ----------------------------------------------------------------------------
-      -- 3.6.7 Sumar las asignaciones y validar que no superen el límite máximo
+      -- Sumar las asignaciones y validar que no superen el límite máximo
       -- establecido en la variable :p_limite_asign.
       ----------------------------------------------------------------------------
       
@@ -239,7 +262,7 @@ END;
 END IF;
 
       ----------------------------------------------------------------------------
-      -- 3.6.8 Insertar el detalle de asignaciones en la tabla DETALLE_ASIGNACION_MES.
+      -- Insertar el detalle de asignaciones en la tabla DETALLE_ASIGNACION_MES.
       ----------------------------------------------------------------------------
       INSERT INTO DETALLE_ASIGNACION_MES (
          mes_proceso,
@@ -275,7 +298,7 @@ END IF;
    CLOSE c_profesionales;
 
    ----------------------------------------------------------------------------
-   -- 3.7 Insertar el resumen por profesión en la tabla RESUMEN_MES_PROFESION.
+   -- Insertar el resumen por profesión en la tabla RESUMEN_MES_PROFESION.
    -- Se agrupan los datos de DETALLE_ASIGNACION_MES por la profesión
    --  y se hace una suma de asesorías, honorarios y asignaciones.
    ----------------------------------------------------------------------------
@@ -290,7 +313,7 @@ END IF;
        monto_total_asignaciones
    )
    SELECT
-       -- Se forma un identificador YYYYMM (ej: 202106)
+       -- Se forma un identificador YYYYMM (202106)
        TO_CHAR(v_ano) || LPAD(v_mes, 2, '0') AS annomes_proceso,
        p.nombre_profesion AS profesion,
        NVL(SUM(dam.nro_asesorias), 0) AS total_asesorias,
@@ -316,13 +339,13 @@ END IF;
        UPPER(TRIM(p.nombre_profesion));
 
    ----------------------------------------------------------------------------
-   -- 3.8 Confirmar la transacción para que todos los cambios se hagan permanentes.
+   -- Confirmar la transacción para que todos los cambios se hagan permanentes.
    ----------------------------------------------------------------------------
    COMMIT;
 
 EXCEPTION
    ----------------------------------------------------------------------------
-   -- 3.9 En caso de error inesperado, se hace un ROLLBACK y se muestra el mensaje.
+   -- En caso de error inesperado, se hace un ROLLBACK y se muestra el mensaje.
    ----------------------------------------------------------------------------
    WHEN OTHERS THEN
       ROLLBACK;
@@ -331,7 +354,7 @@ END;
 /
 
 -- ----------------------------------------------------------------------------
--- 4. Consultas de verificación
+-- Consultas de verificación
 -- Estas consultas permiten verificar el contenido de las tablas una vez
 -- finalizado el proceso de inserción.
 -- ----------------------------------------------------------------------------
@@ -345,7 +368,7 @@ SELECT * FROM ERRORES_PROCESO;
 /* Esto lo realice antes de comenzar el script, luego de poblar las tablas, para
 no tener errores al momento de generar las salidas de las tablas que se pedían.
 --------------------------------------------------------------------------------
-Actualiza la profesión 'Inform�tico' corrigiendo los caracteres especiales.
+Para actualizar la profesión 'Inform�tico' corrigiendo los caracteres especiales.
 Se utiliza la cláusula LIKE para abarcar cualquier variación de caracteres raros.
 --------------------------------------------------------------------------------
 UPDATE profesion 
@@ -394,9 +417,4 @@ COMMIT;
 -- Verifica los resultados de la actualización en la tabla isapre.
 SELECT * 
 FROM isapre;
-
-
-ALTER TABLE RESUMEN_MES_PROFESION
-RENAME COLUMN ANNO_MES_PROCESO TO ANNOMES_PROCESO;
 */
-
