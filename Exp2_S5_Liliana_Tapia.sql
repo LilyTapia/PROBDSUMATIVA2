@@ -53,12 +53,22 @@ DECLARE
    ----------------------------------------------------------------------------
    -- 3.2 Variables para año y mes, calculados a partir de la fecha de proceso.
    ----------------------------------------------------------------------------
-   v_ano    NUMBER := TO_NUMBER(TO_CHAR(TO_DATE(:p_fecha_proceso, 'DD/MM/YYYY'), 'YYYY'));
-   v_mes    NUMBER := TO_NUMBER(TO_CHAR(TO_DATE(:p_fecha_proceso, 'DD/MM/YYYY'), 'MM'));
+   v_ano    NUMBER := TO_NUMBER(
+                        TO_CHAR(
+                          TO_DATE(:p_fecha_proceso, 'DD/MM/YYYY'), 
+                          'YYYY'
+                         )
+                       );
+               
+   v_mes    NUMBER := TO_NUMBER(
+                        TO_CHAR(
+                          TO_DATE(:p_fecha_proceso, 'DD/MM/YYYY'), 
+                          'MM'
+                         )
+                       );
 
    ----------------------------------------------------------------------------
    -- 3.3 Cursor que obtendrá la información básica de cada profesional.
-   -- Se ordena por nombre de profesión (subconsulta), apellido paterno y nombre
    ----------------------------------------------------------------------------
    CURSOR c_profesionales (p_ano NUMBER, p_mes NUMBER)
   IS
@@ -178,49 +188,55 @@ BEGIN
       -- diferente por cada profesión.
       ----------------------------------------------------------------------------
       BEGIN
-         SELECT asignacion
-           INTO v_asig_profesion
-           FROM porcentaje_profesion
-          WHERE cod_profesion = v_profe.cod_profesion;
+   SELECT asignacion
+     INTO v_asig_profesion
+     FROM porcentaje_profesion
+    WHERE cod_profesion = v_profe.cod_profesion;
 
-         v_asig_profesion := ROUND(v_total_honorarios * (v_asig_profesion / 100));
-      EXCEPTION
-         WHEN NO_DATA_FOUND THEN
-         -- Si no hay un dato de asignación para la profesión, se deja en 0
-         -- y se registra un error en la tabla ERRORES_PROCESO.
-            v_asig_profesion := 0;
-            INSERT INTO errores_proceso (
-               error_id,
-               mensaje_error_oracle,
-               mensaje_error_usr
-            ) VALUES (
-               SQ_ERRORES.NEXTVAL,
-               'ORA-01403: No se ha encontrado ningún dato',
-               '                                          ' 
-            );
-      END;
+   v_asig_profesion := ROUND(v_total_honorarios * (v_asig_profesion / 100));
 
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      v_asig_profesion := 0;
+      INSERT INTO errores_proceso (
+         error_id,
+         mensaje_error_oracle,
+         mensaje_error_usr
+      ) 
+      VALUES (
+         SQ_ERRORES.NEXTVAL,
+         'ORA-01403: No se ha encontrado ningún dato',
+         'Error al obtener porcentaje de asignacion para el run Nro. ' || v_profe.numrun_prof
+      );
+END;
       ----------------------------------------------------------------------------
       -- 3.6.7 Sumar las asignaciones y validar que no superen el límite máximo
       -- establecido en la variable :p_limite_asign.
       ----------------------------------------------------------------------------
-      v_total_asignaciones := v_monto_movil_extra 
-                              + v_asig_tipo_cont 
-                              + v_asig_profesion;
+      
+      v_total_asignaciones := v_monto_movil_extra
+                        + v_asig_tipo_cont
+                        + v_asig_profesion;
 
-      IF v_total_asignaciones > :p_limite_asign THEN
-         INSERT INTO errores_proceso (
-            error_id,
-            mensaje_error_oracle,
-            mensaje_error_usr
-         ) VALUES (
-            SQ_ERRORES.NEXTVAL,
-            'Error, profesional supera el monto límite de asignaciones',
-            'Run Nro. ' || v_profe.numrun_prof
-         );
-         -- Si supera el límite, se asigna el monto máximo permitido.
-         v_total_asignaciones := :p_limite_asign;
-      END IF;
+     IF v_total_asignaciones > :p_limite_asign THEN
+     INSERT INTO errores_proceso (
+      error_id,
+      mensaje_error_oracle,
+      mensaje_error_usr
+     ) 
+     VALUES (
+      SQ_ERRORES.NEXTVAL,
+      'Error, profesional supera el monto límite de asignaciones. Run Nro. '
+         || v_profe.numrun_prof,
+      'Se reemplazó el monto total de las asignaciones calculadas de '
+         || v_total_asignaciones
+         || ' por el monto límite de '
+         || :p_limite_asign
+   );
+
+   -- Se asigna el monto máximo permitido.
+   v_total_asignaciones := :p_limite_asign;
+END IF;
 
       ----------------------------------------------------------------------------
       -- 3.6.8 Insertar el detalle de asignaciones en la tabla DETALLE_ASIGNACION_MES.
@@ -237,7 +253,8 @@ BEGIN
          monto_asig_tipocont,
          monto_asig_profesion,
          monto_total_asignaciones
-      ) VALUES (
+      ) 
+      VALUES (
          v_mes,
          v_ano,
          v_profe.numrun_prof,
@@ -263,7 +280,7 @@ BEGIN
    --  y se hace una suma de asesorías, honorarios y asignaciones.
    ----------------------------------------------------------------------------
    INSERT INTO RESUMEN_MES_PROFESION (
-       anno_mes_proceso,
+       annomes_proceso,
        profesion,
        total_asesorias,
        monto_total_honorarios,
@@ -274,7 +291,7 @@ BEGIN
    )
    SELECT
        -- Se forma un identificador YYYYMM (ej: 202106)
-       TO_CHAR(v_ano) || LPAD(v_mes, 2, '0') AS anno_mes_proceso,
+       TO_CHAR(v_ano) || LPAD(v_mes, 2, '0') AS annomes_proceso,
        p.nombre_profesion AS profesion,
        NVL(SUM(dam.nro_asesorias), 0) AS total_asesorias,
        NVL(SUM(dam.monto_honorarios), 0) AS monto_total_honorarios,
@@ -377,5 +394,9 @@ COMMIT;
 -- Verifica los resultados de la actualización en la tabla isapre.
 SELECT * 
 FROM isapre;
+
+
+ALTER TABLE RESUMEN_MES_PROFESION
+RENAME COLUMN ANNO_MES_PROCESO TO ANNOMES_PROCESO;
 */
 
